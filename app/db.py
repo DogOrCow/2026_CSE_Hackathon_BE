@@ -14,7 +14,8 @@ def _normalize_url(url: str) -> str:
     return url
 
 
-_url = _normalize_url(settings.DATABASE_URL)
+# DATABASE_URL= 처럼 빈 값이면 로컬 개발용 sqlite
+_url = _normalize_url(settings.DATABASE_URL or "sqlite:///./dev.db")
 _connect_args = {"check_same_thread": False} if _url.startswith("sqlite") else {}
 engine = create_engine(_url, pool_pre_ping=True, connect_args=_connect_args)
 
