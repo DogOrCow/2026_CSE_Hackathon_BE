@@ -5,7 +5,7 @@
 """
 
 from collections.abc import Iterable
-from datetime import date, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, func, select
@@ -13,8 +13,8 @@ from sqlmodel import Session, func, select
 from app.config import KST
 from app.db import get_session
 from app.deps import get_current_user, require_course_member
-from app.models import ClassSession, CourseSchedule, Question, QuestionVote, Role, User
-from app.services.schedule import get_live_session
+from app.models import Question, QuestionVote, Role, User
+from app.services.schedule import get_live_session, session_bounds
 
 router = APIRouter(tags=["live"])
 
@@ -74,25 +74,6 @@ def question_out(q: Question, user: User, vote_count: int, voted: bool) -> dict:
     }
 
 
-def session_window(session: Session, cs: ClassSession) -> tuple[str | None, str | None]:
-    """차시의 시작·종료 시각. 그 요일 시간표가 없으면 (None, None).
-
-    DEMO_ALWAYS_LIVE로 시간표 없는 날에 수업 중이 된 경우 None이 나간다.
-    TODO: A-2(#3)에서 schedule.py에 같은 함수가 생기면 그쪽을 쓴다.
-    """
-    sched = session.exec(
-        select(CourseSchedule)
-        .where(CourseSchedule.course_id == cs.course_id, CourseSchedule.day_of_week == cs.date.weekday())
-        .order_by(CourseSchedule.start_time)
-    ).first()
-    if sched is None:
-        return None, None
-    d: date = cs.date
-    starts = datetime.combine(d, sched.start_time, tzinfo=KST)
-    ends = datetime.combine(d, sched.end_time, tzinfo=KST)
-    return iso_kst(starts), iso_kst(ends)
-
-
 # ---------- 엔드포인트 ----------
 
 @router.get("/courses/{id}/live")
@@ -111,14 +92,14 @@ def get_live(
     counts = vote_counts(session, ids)
     voted = my_votes(session, user, ids)
 
-    starts_at, ends_at = session_window(session, cs)
+    starts_at, ends_at = session_bounds(cs)
     return {
         "session": {
             "id": cs.id,
             "date": cs.date.isoformat(),
             "week": cs.week,
-            "starts_at": starts_at,
-            "ends_at": ends_at,
+            "starts_at": iso_kst(starts_at),
+            "ends_at": iso_kst(ends_at),
         },
         "questions": [question_out(q, user, counts.get(q.id, 0), q.id in voted) for q in questions],
     }
