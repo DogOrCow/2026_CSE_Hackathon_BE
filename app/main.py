@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import create_db_and_tables
 from app.errors import register_error_handlers
+from app.openapi_docs import install_openapi
 from app.routers import auth, courses, history, live, questions, stream
 
 
@@ -34,3 +35,6 @@ for r in (auth, courses, history, live, questions, stream):
 @app.get("/health")
 def health():
     return {"status": "ok", "env": settings.ENV, "demo_always_live": settings.DEMO_ALWAYS_LIVE}
+
+
+install_openapi(app)  # Swagger에 실제 오류 코드 표시 (app/openapi_docs.py)
