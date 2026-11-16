@@ -139,6 +139,7 @@ docker run --env-file .env -p 8000:8000 anon-realname-be
 | 메서드 | 경로 | 권한 | 성공 | 오류 |
 | --- | --- | --- | --- | --- |
 | GET | `/courses` | 학생: 등록 과목 / 교수: 담당 과목 | 200 과목 배열 | – |
+| POST | `/courses` | 교수, 요청 `name`, `code`, `semester`, `schedules` | 201 과목 | 400 입력 오류, 403 `FORBIDDEN`, 409 `COURSE_CODE_TAKEN` |
 | POST | `/courses/enroll` | 학생, 요청 `code` | 201 과목 | 404 `COURSE_NOT_FOUND`, 409 `ALREADY_ENROLLED` |
 
 ```json
@@ -146,6 +147,7 @@ docker run --env-file .env -p 8000:8000 anon-realname-be
   "id": 1,
   "name": "데이터베이스",
   "code": "COMP0322",
+  "semester": "2026-2",
   "professor_name": "서지환",
   "schedule_text": "화·목 10:30",
   "is_live": true,
@@ -328,7 +330,7 @@ docker run --env-file .env -p 8000:8000 anon-realname-be
 
 ## 범위 밖
 
-신고·관리 화면, 비밀번호 찾기·탈퇴, 교수의 과목·시간표 등록 화면, 보강·휴강, LMS 연동, 질문 수정·삭제, 댓글·글 답변, 푸시·메일 알림.
+신고·관리 화면, 비밀번호 찾기·탈퇴, 보강·휴강, LMS 연동, 질문 수정·삭제, 댓글·글 답변, 푸시·메일 알림.
 
 ## 미정 사항
 

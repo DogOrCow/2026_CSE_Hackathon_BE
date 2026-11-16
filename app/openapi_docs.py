@@ -25,6 +25,13 @@ ERRORS: dict[tuple[str, str], dict[int, list[str]]] = {
     ("post", "/api/auth/login"): {**BODY, 401: ["INVALID_CREDENTIALS"]},
     ("get", "/api/me"): AUTH,
     ("get", "/api/courses"): AUTH,
+    ("post", "/api/courses"): {
+        400: [
+            "VALIDATION_ERROR", "INVALID_COURSE_NAME", "INVALID_COURSE_CODE",
+            "INVALID_SEMESTER", "DUPLICATE_SCHEDULE_DAY", "INVALID_SCHEDULE_TIME",
+        ],
+        **AUTH, 403: ["FORBIDDEN"], 409: ["COURSE_CODE_TAKEN"],
+    },
     ("post", "/api/courses/enroll"): {
         **BODY, **AUTH, 403: ["FORBIDDEN"], 404: ["COURSE_NOT_FOUND"], 409: ["ALREADY_ENROLLED"],
     },
@@ -57,6 +64,12 @@ CODE_TEXT = {
     "AGREEMENT_REQUIRED": "익명 정책 미동의",
     "INVALID_CREDENTIALS": "메일 또는 비밀번호가 틀림",
     "COURSE_NOT_FOUND": "없는 과목 코드",
+    "INVALID_COURSE_NAME": "과목명은 1~100자",
+    "INVALID_COURSE_CODE": "영문, 숫자, 하이픈을 사용한 20자 이하 코드가 필요함",
+    "INVALID_SEMESTER": "학기는 1~20자",
+    "DUPLICATE_SCHEDULE_DAY": "같은 요일에 시간표를 두 번 등록함",
+    "INVALID_SCHEDULE_TIME": "종료 시각이 시작 시각보다 늦어야 함",
+    "COURSE_CODE_TAKEN": "이미 사용 중인 과목 코드",
     "ALREADY_ENROLLED": "이미 등록한 과목",
     "NOT_IN_CLASS": "지금은 수업 시간이 아님",
     "INVALID_LENGTH": "공백 제거 후 1~200자가 아님",
