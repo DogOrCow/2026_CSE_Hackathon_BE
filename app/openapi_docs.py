@@ -19,7 +19,8 @@ BODY = {400: ["VALIDATION_ERROR"]}
 ERRORS: dict[tuple[str, str], dict[int, list[str]]] = {
     ("post", "/api/auth/email-code"): {400: ["INVALID_EMAIL_DOMAIN", "VALIDATION_ERROR"], 409: ["EMAIL_TAKEN"]},
     ("post", "/api/auth/signup"): {
-        400: ["INVALID_CODE", "CODE_EXPIRED", "WEAK_PASSWORD", "AGREEMENT_REQUIRED", "INVALID_EMAIL_DOMAIN", "VALIDATION_ERROR"],
+        400: ["INVALID_CODE", "CODE_EXPIRED", "WEAK_PASSWORD", "AGREEMENT_REQUIRED", "INVALID_EMAIL_DOMAIN", "INVALID_NAME", "VALIDATION_ERROR"],
+        403: ["INVALID_PROFESSOR_CODE", "PROFESSOR_SIGNUP_DISABLED"],
         409: ["EMAIL_TAKEN"],
     },
     ("post", "/api/auth/login"): {**BODY, 401: ["INVALID_CREDENTIALS"]},
@@ -62,6 +63,9 @@ CODE_TEXT = {
     "CODE_EXPIRED": "인증 코드 3분 지남",
     "WEAK_PASSWORD": "비밀번호 8자 미만",
     "AGREEMENT_REQUIRED": "익명 정책 미동의",
+    "INVALID_NAME": "교수 가입인데 이름이 비었거나 50자 초과",
+    "INVALID_PROFESSOR_CODE": "교수 가입 코드가 틀림",
+    "PROFESSOR_SIGNUP_DISABLED": "서버에 교수 가입 코드가 설정되지 않아 교수 가입을 받지 않음",
     "INVALID_CREDENTIALS": "메일 또는 비밀번호가 틀림",
     "COURSE_NOT_FOUND": "없는 과목 코드",
     "INVALID_COURSE_NAME": "과목명은 1~100자",

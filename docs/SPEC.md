@@ -62,7 +62,7 @@ Nov 17, 2026 · @예성
 
 | ID | 기능 | 동작 |
 | --- | --- | --- |
-| P-01 | 로그인 | 학생과 같은 화면에서 로그인한다. 교수 계정은 운영자가 미리 등록한다. 수업 차시는 시간표에 따라 열린다. |
+| P-01 | 가입·로그인 | 학생과 같은 화면에서 로그인한다. 교수는 knu.ac.kr 메일 인증과 함께 이름과 교수 가입 코드를 넣어 가입한다. 가입 코드는 팀이 교수에게 따로 전달한다. 수업 차시는 시간표에 따라 열린다. |
 | P-02 | 내 강의 | 담당 과목 목록과 과목 코드를 보여준다. 수업 중인 과목을 맨 위에 강조한다. |
 | P-03 | 질문 받는 창 | 수업 중인 차시의 질문을 올라온 순서로 보여준다. 각 질문에 등록 시각과 궁금해한 사람 수를 표시한다. 새 질문은 새로고침 없이 추가된다. |
 | P-04 | 답변 완료 | 질문마다 "답변 완료"를 누른다. 완료된 질문은 제자리에서 흐려지고 "되돌리기"로 취소할 수 있다. |
@@ -136,7 +136,7 @@ Jev 호출은 judge(content, course_name) 함수 하나 뒤에 둔다. 모델이
 - 보류된 질문은 저장하지 않으므로 상태 컬럼이 없다.
 - week(주차)는 학기 시작일로부터 계산해 차시를 만들 때 넣는다. 학기 시작일은 설정값으로 둔다.
 - 초기 데이터 스크립트로 교수 계정과 데모 과목을 등록한다. 교수는 로그인 후 과목과 시간표를 함께 추가할 수 있다.
-- users.name은 교수만 값이 있다. 학생은 가입할 때 이름을 받지 않으므로 널이다.
+- users.name은 교수만 값이 있다. 학생은 가입할 때 이름을 받지 않으므로 널이다. 교수는 가입할 때 이름을 받는다.
 
 ## 6. API 명세
 
@@ -149,9 +149,11 @@ Jev 호출은 judge(content, course_name) 함수 하나 뒤에 둔다. 모델이
 | 메서드 | 경로 | 요청 | 성공 응답 | 오류 |
 | --- | --- | --- | --- | --- |
 | POST | /auth/email-code | email | 204 | 400 INVALID_EMAIL_DOMAIN, 409 EMAIL_TAKEN |
-| POST | /auth/signup | email, code, password, agreed | 201 access_token, role, name | 400 INVALID_CODE, 400 CODE_EXPIRED, 400 WEAK_PASSWORD, 400 AGREEMENT_REQUIRED |
+| POST | /auth/signup | email, code, password, agreed (교수: role, name, professor_code 추가) | 201 access_token, role, name | 400 INVALID_CODE, 400 CODE_EXPIRED, 400 WEAK_PASSWORD, 400 AGREEMENT_REQUIRED, 400 INVALID_NAME, 403 INVALID_PROFESSOR_CODE, 403 PROFESSOR_SIGNUP_DISABLED |
 | POST | /auth/login | email, password | 200 access_token, role, name | 401 INVALID_CREDENTIALS |
 | GET | /me | 없음 | 200 email, name, role | 401 UNAUTHORIZED |
+
+가입 요청의 role은 기본 STUDENT다. PROFESSOR로 가입하려면 name(1~50자)과 professor_code가 필요하고, professor_code는 서버 환경변수 PROFESSOR_SIGNUP_CODE와 같아야 한다. 이 환경변수가 비어 있으면 교수 가입은 403 PROFESSOR_SIGNUP_DISABLED다. 학생 가입에 보낸 name은 저장하지 않는다.
 
 응답의 name은 교수면 이름, 학생이면 메일의 @ 앞부분이다. 토큰은 7일간 유효하고 리프레시 토큰은 두지 않는다. 로그인 상태 유지를 끄면 프론트가 토큰을 브라우저 탭이 열려 있는 동안만 보관한다.
 

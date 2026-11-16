@@ -18,7 +18,7 @@
 
 | 영역 | 내용 | 상태 |
 | --- | --- | --- |
-| 인증 | 메일 인증 코드, 가입, 로그인, JWT | 완료 (메일 발송은 [제약](#알려진-제약) 참고) |
+| 인증 | 메일 인증 코드, 학생·교수 가입, 로그인, JWT | 완료 (메일 발송은 [제약](#알려진-제약) 참고) |
 | 과목 | 목록, 수강 등록, 교수 강의 추가 | 완료 |
 | 수업 중 | 질문 목록·등록, 나도 궁금, 답변 완료 | 완료 |
 | 실시간 | SSE 이벤트 4종, 수업 종료 | 완료 |
@@ -117,6 +117,7 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 | `JUDGE_MODEL` | 선택 | 선택 | 기본 `jev-1.14.0` |
 | `JUDGE_THRESHOLD` | 선택 | 선택 | 기본 `0.6` |
 | `SMTP_USER`, `SMTP_PASSWORD` | 선택 | **비워 둠** | 비면 인증 코드를 서버 로그에 출력 ([제약](#알려진-제약)) |
+| `PROFESSOR_SIGNUP_CODE` | 선택 | 교수에게 따로 전달할 값 | 교수 가입 코드. 비면 교수 가입을 받지 않음 |
 
 ## API
 
@@ -133,6 +134,19 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 | | `PUT`·`DELETE /questions/{id}/vote` | 등록 학생 |
 | | `PUT`·`DELETE /questions/{id}/answered` | 담당 교수 |
 | 지난 차시 | `GET /courses/{id}/sessions`, `GET /sessions/{id}/questions` | 등록 학생, 담당 교수 |
+
+### 교수 회원가입
+
+학생과 같은 `POST /api/auth/signup`에 아래 필드를 더 보냅니다. 교수 메일도 `@knu.ac.kr`이라 메일 인증만으로는 학생과 구분할 수 없어서, 팀이 교수님께 따로 전달하는 **교수 가입 코드**가 필요합니다.
+
+```json
+{ "email": "prof@knu.ac.kr", "code": "482913", "password": "...", "agreed": true,
+  "role": "PROFESSOR", "name": "홍길동", "professor_code": "<PROFESSOR_SIGNUP_CODE 값>" }
+```
+
+- `role`을 빼면 학생으로 가입합니다.
+- 코드가 틀리면 `403 INVALID_PROFESSOR_CODE`, 서버에 코드가 없으면 `403 PROFESSOR_SIGNUP_DISABLED`, 이름이 없으면 `400 INVALID_NAME`입니다.
+- 가입한 교수는 `POST /api/courses`로 강의와 시간표를 추가합니다.
 
 ### 오류 형식
 
