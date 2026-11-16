@@ -4,7 +4,7 @@
     python -m scripts.judge_eval --sweep         # Jev를 문장당 한 번만 부르고 기준값별 정확도 비교
     python -m scripts.judge_eval --file 다른.csv
 
-CSV 열: sentence, course_name, expected
+CSV 열: sentence, course_name, expected (note 열은 메모용, 무시됨)
 expected: PASS(또는 ON_TOPIC), OFF_TOPIC, PERSONAL, ABUSIVE
 
 판정 규칙상 보류는 "확신도 ≥ 기준값"일 때만 일어나므로, 기준값을 올리면 덜 막고 내리면 더 막는다.
