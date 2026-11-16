@@ -45,7 +45,13 @@ CRITERIA = {
     "OFF_TOPIC": "Unrelated to the course or the class: small talk, jokes, chatting, other subjects",
     "PERSONAL": "Singles out a specific person (a classmate, the professor, a TA) "
                 "to mock, criticize, expose, or gossip about them",
-    "ABUSIVE": "Contains profanity, insults, slurs, or hateful language",
+    # 비속어는 가벼운 것도, 수업 얘기여도 막는다 (팀 결정). 글자만 겹치는 일반 단어는 예외로 명시.
+    # 예시에 "시발"을 넣으면 "시발점"이 막혀서 뺐다. tests/judge_cases.csv로 41문장 40개 정답 확인.
+    "ABUSIVE": "Contains any profanity, swear word, or vulgar slang, including mild or casual ones and their "
+               "abbreviations (e.g. 존나, 졸라, ㅈㄴ, 씨발, ㅅㅂ, 병신, 개빡치다, 미친), even when it is about "
+               "the course or just expresses frustration; also insults, slurs, or hateful language. "
+               "Ordinary words that only share syllables with a swear word are not profanity "
+               "(e.g. 시발점 meaning starting point, 개념, 병렬, 미분)",
 }
 
 TIMEOUT_SECONDS = 3.0
