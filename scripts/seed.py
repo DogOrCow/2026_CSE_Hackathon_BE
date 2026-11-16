@@ -1,4 +1,4 @@
-"""초기 데이터: 교수 1명, 학생 3명, 과목 2개(각 시간표 2개), 수강 등록, 지난 차시 3개씩.
+"""초기 데이터: 교수 2명, 학생 3명, 과목 2개(각 시간표 2개), 수강 등록, 지난 차시 3개씩.
 
 여러 번 실행해도 중복되지 않는다.
     python -m scripts.seed
@@ -20,6 +20,7 @@ SEED_PASSWORD = "password1234"
 SEMESTER = "2026-2"
 
 PROFESSOR = {"email": "prof@knu.ac.kr", "name": "서지환"}
+SECOND_PROFESSOR = {"email": "prof2@knu.ac.kr", "name": "김민준"}
 STUDENTS = ["student1@knu.ac.kr", "student2@knu.ac.kr", "student3@knu.ac.kr"]
 COURSES = [
     {
@@ -133,6 +134,7 @@ def seed() -> None:
     with Session(engine) as s:
         prof = _get_or_create_user(s, PROFESSOR["email"], Role.PROFESSOR, PROFESSOR["name"])
         students = [_get_or_create_user(s, e, Role.STUDENT) for e in STUDENTS]
+        second_prof = _get_or_create_user(s, SECOND_PROFESSOR["email"], Role.PROFESSOR, SECOND_PROFESSOR["name"])
 
         for c in COURSES:
             course = s.exec(select(Course).where(Course.code == c["code"])).first()
@@ -165,6 +167,7 @@ def seed() -> None:
 
         print("seed 완료")
         print(f"  교수 id={prof.id} {prof.email}")
+        print(f"  교수 id={second_prof.id} {second_prof.email}")
         for st in students:
             print(f"  학생 id={st.id} {st.email}")
         print(f"  비밀번호(공통): {SEED_PASSWORD}")
