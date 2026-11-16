@@ -53,7 +53,7 @@ app/
     judge.py         # Jev 판단 모델                               [B]
     broadcast.py     # 과목별 SSE 구독자 관리, publish()            [B]
 scripts/
-  seed.py            # 초기 데이터 (교수 1, 학생 3, 과목 2, 시간표)   [A]
+  seed.py            # 초기 데이터 (python -m scripts.seed)          [A]
   judge_eval.py      # 판단 모델 기준값 평가                         [B]
 tests/
   judge_cases.csv    # 평가용 문장                                  [B]
@@ -67,9 +67,28 @@ Dockerfile                                                         [A]
 ```bash
 cp .env.example .env        # 값 채우기
 pip install -r requirements.txt
-python scripts/seed.py      # 여러 번 실행해도 중복되지 않음
+python -m scripts.seed      # 여러 번 실행해도 중복되지 않음
 uvicorn app.main:app --reload
 ```
+
+로컬 PostgreSQL이 없으면 Docker로 띄우거나, `DATABASE_URL`을 비워 sqlite(`./dev.db`)로 개발할 수 있습니다.
+
+```bash
+docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -p 5432:5432 postgres:16-alpine
+```
+
+seed 계정 (비밀번호 공통 `password1234`): 교수 `prof@knu.ac.kr`(id 1), 학생 `student1~3@knu.ac.kr`(id 2~4).
+과목은 데이터베이스 `COMP0322`(화·목 10:30), 운영체제 `COMP0312`(월·수 13:00).
+로그인 구현 전에는 `ENV=dev`에서 `X-Debug-User: 2` 헤더로 사용자를 지정합니다.
+
+### 0단계 뼈대 사용 규칙
+
+- 오류: `api_error(409, "NOT_IN_CLASS", "지금은 수업 시간이 아닙니다")`는 호출하면 바로 예외를 던집니다. 추가 필드는 키워드로 (`reason="OFF_TOPIC"`).
+- 요청 형식 오류(FastAPI 기본 422)는 `400 VALIDATION_ERROR`로 나갑니다. 422는 `QUESTION_HELD` 전용입니다.
+- 권한: `require_student`, `require_professor`는 `Depends()`로, `require_course_member(session, user, course_id)`, `require_course_professor(...)`는 핸들러 안에서 직접 부릅니다 (과목 객체 반환).
+- 시각: `app.config.now_kst()`를 씁니다. DB 시각 컬럼은 timezone 포함.
+- 비밀번호 해시는 bcrypt (seed와 A-1 `security.py`가 같아야 함).
+- 라우터는 동기 함수, `broadcast.publish()`와 `judge()`도 동기 함수입니다.
 
 또는 Docker:
 
