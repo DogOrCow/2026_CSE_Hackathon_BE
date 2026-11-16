@@ -14,12 +14,12 @@
 
 ## 현재 상태
 
-명세의 API 15개와 교수 강의 추가 API 1개, 모두 16개가 구현되어 Railway에 배포되어 있습니다.
+명세의 API 15개에 교수 강의 추가, 운영자 강의 일괄 등록·조회를 더해 모두 18개가 구현되어 Railway에 배포되어 있습니다.
 
 | 영역 | 내용 | 상태 |
 | --- | --- | --- |
-| 인증 | 메일 인증 코드, 가입, 로그인, JWT | 완료 (메일 발송은 [제약](#알려진-제약) 참고) |
-| 과목 | 목록, 수강 등록, 교수 강의 추가 | 완료 |
+| 인증 | 메일 인증 코드, 학생·교수 가입, 로그인, JWT | 완료 (메일 발송은 [제약](#알려진-제약) 참고) |
+| 과목 | 목록, 수강 등록, 교수 강의 추가, 운영자 강의 미리 등록 | 완료 |
 | 수업 중 | 질문 목록·등록, 나도 궁금, 답변 완료 | 완료 |
 | 실시간 | SSE 이벤트 4종, 수업 종료 | 완료 |
 | 검열 | Jev 판단 모델 | 완료 (평가 문장 41개 전부 정답) |
@@ -117,6 +117,8 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 | `JUDGE_MODEL` | 선택 | 선택 | 기본 `jev-1.14.0` |
 | `JUDGE_THRESHOLD` | 선택 | 선택 | 기본 `0.6` |
 | `SMTP_USER`, `SMTP_PASSWORD` | 선택 | **비워 둠** | 비면 인증 코드를 서버 로그에 출력 ([제약](#알려진-제약)) |
+| `PROFESSOR_SIGNUP_CODE` | 선택 | 교수에게 따로 전달할 값 | 교수 가입 코드. 비면 교수 가입을 받지 않음 (미리 등록된 교수 메일은 코드 불필요) |
+| `ADMIN_API_KEY` | 선택 | 팀만 아는 긴 값 | 운영자 강의 일괄 등록 API 키. 비면 운영자 API가 꺼짐 |
 
 ## API
 
@@ -133,6 +135,49 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 | | `PUT`·`DELETE /questions/{id}/vote` | 등록 학생 |
 | | `PUT`·`DELETE /questions/{id}/answered` | 담당 교수 |
 | 지난 차시 | `GET /courses/{id}/sessions`, `GET /sessions/{id}/questions` | 등록 학생, 담당 교수 |
+
+### 교수 회원가입
+
+학생과 같은 `POST /api/auth/signup`에 아래 필드를 더 보냅니다. 교수 메일도 `@knu.ac.kr`이라 메일 인증만으로는 학생과 구분할 수 없어서, 팀이 교수님께 따로 전달하는 **교수 가입 코드**가 필요합니다.
+
+```json
+{ "email": "prof@knu.ac.kr", "code": "482913", "password": "...", "agreed": true,
+  "role": "PROFESSOR", "name": "홍길동", "professor_code": "<PROFESSOR_SIGNUP_CODE 값>" }
+```
+
+- `role`을 빼면 학생으로 가입합니다.
+- 코드가 틀리면 `403 INVALID_PROFESSOR_CODE`, 서버에 코드가 없으면 `403 PROFESSOR_SIGNUP_DISABLED`, 이름이 없으면 `400 INVALID_NAME`입니다.
+- 가입한 교수는 `POST /api/courses`로 강의와 시간표를 추가합니다.
+- 운영자가 [미리 등록한](#운영자-강의-미리-등록) 메일로 가입하면 가입 코드 없이 교수가 되고, 등록된 강의가 바로 보입니다.
+
+### 운영자: 강의 미리 등록
+
+강의계획서의 과목을 담당 교수 메일과 함께 미리 넣어 둡니다. 교수는 그 메일로 가입하면 과목 코드를 입력하지 않아도 자기 강의가 바로 보입니다.
+
+| 메서드 | 경로 | 설명 |
+| --- | --- | --- |
+| POST | `/api/admin/courses` | 강의 일괄 등록. 과목 코드 기준으로 없으면 만들고 있으면 덮어씀 |
+| GET | `/api/admin/courses` | 등록된 과목과 담당 교수 가입 여부(`PENDING` 가입 전 / `ACTIVE` 가입함) |
+
+- 헤더 `X-Admin-Key`에 환경변수 `ADMIN_API_KEY` 값을 넣습니다. Swagger에서는 **Authorize**의 `APIKeyHeader` 칸에 넣습니다. 값이 없으면 이 API는 꺼져 있습니다(`403 ADMIN_DISABLED`).
+- 담당 교수가 아직 가입하지 않았으면, 그 메일로 **비밀번호 없는 교수 계정**을 만들어 강의를 붙여 둡니다. 비밀번호가 없어 로그인할 수 없습니다.
+- 교수가 그 메일로 가입하면 비밀번호가 채워지면서 강의가 붙은 계정이 됩니다. 이 경우 교수 가입 코드는 필요 없습니다.
+- 요청 전체를 먼저 검사하고 한 번에 저장합니다. 하나라도 틀리면 아무것도 저장하지 않습니다. 같은 요청을 다시 보내도 중복되지 않습니다.
+
+```json
+{
+  "courses": [
+    {
+      "code": "COMP0322-001", "name": "데이터베이스", "semester": "2026-2",
+      "professor_email": "kim@knu.ac.kr", "professor_name": "김교수",
+      "schedules": [
+        { "day_of_week": 1, "start_time": "10:30", "end_time": "11:45" },
+        { "day_of_week": 3, "start_time": "10:30", "end_time": "11:45" }
+      ]
+    }
+  ]
+}
+```
 
 ### 오류 형식
 

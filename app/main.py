@@ -7,7 +7,7 @@ from app.config import settings
 from app.db import create_db_and_tables
 from app.errors import register_error_handlers
 from app.openapi_docs import install_openapi
-from app.routers import auth, courses, history, live, questions, stream
+from app.routers import admin, auth, courses, history, live, questions, stream
 
 
 @asynccontextmanager
@@ -28,7 +28,7 @@ app.add_middleware(
 
 register_error_handlers(app)
 
-for r in (auth, courses, history, live, questions, stream):
+for r in (auth, courses, history, live, questions, stream, admin):
     app.include_router(r.router, prefix="/api")
 
 
