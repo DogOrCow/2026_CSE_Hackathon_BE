@@ -31,6 +31,14 @@ CODE_TTL = timedelta(minutes=3)
 MIN_PASSWORD_LENGTH = 8
 MAX_NAME_LENGTH = 50
 
+# 운영자가 강의를 미리 등록하며 만든 "가입 대기" 교수 계정 (admin.py). 비밀번호가 없어 로그인할 수 없다.
+# 그 메일로 가입하면 계정이 활성화되고 미리 연결된 강의가 그대로 보인다. 가입 코드는 필요 없다.
+PENDING_PASSWORD_HASH = ""
+
+
+def is_pending_professor(user: User | None) -> bool:
+    return user is not None and user.role == Role.PROFESSOR and user.password_hash == PENDING_PASSWORD_HASH
+
 
 class EmailCodeRequest(BaseModel):
     email: str
@@ -111,7 +119,8 @@ def _token_response(user: User) -> TokenResponse:
 def request_email_code(body: EmailCodeRequest, session: Session = Depends(get_session)):
     email = _normalize_email(body.email)
     _check_domain(email)
-    if session.exec(select(User).where(User.email == email)).first():
+    existing = session.exec(select(User).where(User.email == email)).first()
+    if existing is not None and not is_pending_professor(existing):
         api_error(409, "EMAIL_TAKEN", "이미 가입한 메일입니다")
 
     # 다시 요청하면 이전 코드는 무효: 메일당 최신 1건만 남긴다
@@ -132,10 +141,18 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
         api_error(400, "AGREEMENT_REQUIRED", "익명 정책에 동의해야 가입할 수 있습니다")
     if len(body.password) < MIN_PASSWORD_LENGTH:
         api_error(400, "WEAK_PASSWORD", "비밀번호는 8자 이상이어야 합니다")
-    if session.exec(select(User).where(User.email == email)).first():
+    existing = session.exec(select(User).where(User.email == email)).first()
+    pending = is_pending_professor(existing)
+    if existing is not None and not pending:
         api_error(409, "EMAIL_TAKEN", "이미 가입한 메일입니다")
     # 교수 가입 조건은 인증 코드를 쓰기 전에 확인한다 (코드가 틀려도 인증 코드는 그대로 남음)
-    professor_name = _check_professor_signup(body) if body.role == Role.PROFESSOR else None
+    if pending:
+        # 운영자가 미리 등록한 교수 메일: role과 상관없이 교수로 활성화, 가입 코드 불필요
+        professor_name = (body.name or "").strip()[:MAX_NAME_LENGTH] or existing.name
+    elif body.role == Role.PROFESSOR:
+        professor_name = _check_professor_signup(body)
+    else:
+        professor_name = None
 
     verification = session.exec(
         select(EmailVerification)
@@ -148,12 +165,17 @@ def signup(body: SignupRequest, session: Session = Depends(get_session)):
     if _aware(verification.expires_at) <= now:
         api_error(400, "CODE_EXPIRED", "인증 코드가 만료되었습니다")
 
-    user = User(
-        email=email,
-        password_hash=hash_password(body.password),
-        role=Role.PROFESSOR if professor_name else Role.STUDENT,
-        name=professor_name,  # 학생은 이름을 받지 않는다 (SPEC 5장)
-    )
+    if pending:
+        user = existing  # 미리 연결된 강의가 그대로 이 계정에 남는다
+        user.password_hash = hash_password(body.password)
+        user.name = professor_name
+    else:
+        user = User(
+            email=email,
+            password_hash=hash_password(body.password),
+            role=Role.PROFESSOR if professor_name else Role.STUDENT,
+            name=professor_name,  # 학생은 이름을 받지 않는다 (SPEC 5장)
+        )
     verification.verified_at = now
     session.add(user)
     session.add(verification)

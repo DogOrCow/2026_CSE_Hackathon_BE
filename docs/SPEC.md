@@ -62,7 +62,7 @@ Nov 17, 2026 · @예성
 
 | ID | 기능 | 동작 |
 | --- | --- | --- |
-| P-01 | 가입·로그인 | 학생과 같은 화면에서 로그인한다. 교수는 knu.ac.kr 메일 인증과 함께 이름과 교수 가입 코드를 넣어 가입한다. 가입 코드는 팀이 교수에게 따로 전달한다. 수업 차시는 시간표에 따라 열린다. |
+| P-01 | 가입·로그인 | 학생과 같은 화면에서 로그인한다. 교수는 knu.ac.kr 메일 인증과 함께 이름과 교수 가입 코드를 넣어 가입한다. 가입 코드는 팀이 교수에게 따로 전달한다. 운영자가 강의를 미리 등록한 교수 메일로 가입하면 가입 코드 없이 교수가 되고 그 강의가 바로 보인다. 수업 차시는 시간표에 따라 열린다. |
 | P-02 | 내 강의 | 담당 과목 목록과 과목 코드를 보여준다. 수업 중인 과목을 맨 위에 강조한다. |
 | P-03 | 질문 받는 창 | 수업 중인 차시의 질문을 올라온 순서로 보여준다. 각 질문에 등록 시각과 궁금해한 사람 수를 표시한다. 새 질문은 새로고침 없이 추가된다. |
 | P-04 | 답변 완료 | 질문마다 "답변 완료"를 누른다. 완료된 질문은 제자리에서 흐려지고 "되돌리기"로 취소할 수 있다. |
@@ -152,6 +152,8 @@ Jev 호출은 judge(content, course_name) 함수 하나 뒤에 둔다. 모델이
 | POST | /auth/signup | email, code, password, agreed (교수: role, name, professor_code 추가) | 201 access_token, role, name | 400 INVALID_CODE, 400 CODE_EXPIRED, 400 WEAK_PASSWORD, 400 AGREEMENT_REQUIRED, 400 INVALID_NAME, 403 INVALID_PROFESSOR_CODE, 403 PROFESSOR_SIGNUP_DISABLED |
 | POST | /auth/login | email, password | 200 access_token, role, name | 401 INVALID_CREDENTIALS |
 | GET | /me | 없음 | 200 email, name, role | 401 UNAUTHORIZED |
+
+운영자는 POST /api/admin/courses(헤더 X-Admin-Key = 환경변수 ADMIN_API_KEY)로 강의를 담당 교수 메일과 함께 미리 등록할 수 있다. 그 교수가 아직 가입하지 않았으면 비밀번호 없는 교수 계정을 만들어 강의를 붙여 두고, 교수가 그 메일로 가입하면 가입 코드 없이 교수 계정이 활성화되어 강의가 바로 보인다. GET /api/admin/courses는 등록된 과목과 교수 가입 여부(PENDING/ACTIVE)를 돌려준다.
 
 가입 요청의 role은 기본 STUDENT다. PROFESSOR로 가입하려면 name(1~50자)과 professor_code가 필요하고, professor_code는 서버 환경변수 PROFESSOR_SIGNUP_CODE와 같아야 한다. 이 환경변수가 비어 있으면 교수 가입은 403 PROFESSOR_SIGNUP_DISABLED다. 학생 가입에 보낸 name은 저장하지 않는다.
 
