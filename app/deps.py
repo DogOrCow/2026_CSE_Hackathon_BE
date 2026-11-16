@@ -12,6 +12,7 @@ require_course_member / require_course_professor 는 일반 함수다.
 """
 
 from fastapi import Depends, Header
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlmodel import Session, select
 
 from app.config import settings
@@ -20,10 +21,15 @@ from app.errors import api_error
 from app.models import Course, Enrollment, Role, User
 from app.services.security import decode_access_token
 
+# Swagger의 Authorize 버튼용 보안 스킴. auto_error=False라 헤더가 없어도 여기서 막지 않고
+# 아래에서 X-Debug-User(dev)까지 본 뒤 401을 낸다.
+bearer_scheme = HTTPBearer(auto_error=False, description="POST /api/auth/login 응답의 access_token")
+
 
 def get_current_user(
-    authorization: str | None = Header(default=None),
-    x_debug_user: str | None = Header(default=None),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    # dev에서만 Swagger에 입력 칸을 보여준다. prod에서는 문서에도 없고 값도 무시한다.
+    x_debug_user: str | None = Header(default=None, include_in_schema=settings.is_dev),
     session: Session = Depends(get_session),
 ) -> User:
     """Authorization: Bearer <JWT>로 사용자를 찾는다.
@@ -32,9 +38,9 @@ def get_current_user(
     """
     user_id: int | None = None
 
-    scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() == "bearer" and token.strip():
-        payload = decode_access_token(token.strip())
+    token = credentials.credentials.strip() if credentials else ""
+    if token:
+        payload = decode_access_token(token)
         if payload is None or not str(payload.get("sub", "")).isdigit():
             api_error(401, "UNAUTHORIZED", "로그인이 필요합니다")
         user_id = int(payload["sub"])
