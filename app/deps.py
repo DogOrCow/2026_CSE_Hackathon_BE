@@ -1,7 +1,7 @@
 """인증·권한 의존성.
 
-get_current_user()는 JWT 검증이다 (A-1). 이름과 반환 타입(User)은 0단계와 같다.
-ENV=dev에서는 X-Debug-User 헤더도 계속 받는다.
+get_current_user()는 0단계 임시 버전이다. A-1에서 JWT 검증으로 바꾸되,
+이름과 반환 타입(User)은 그대로 둔다.
 
 require_course_member / require_course_professor 는 일반 함수다.
 경로 변수 이름이 라우터마다 달라서({id}, 질문의 course 등) 핸들러 안에서 직접 부른다.
@@ -18,32 +18,16 @@ from app.config import settings
 from app.db import get_session
 from app.errors import api_error
 from app.models import Course, Enrollment, Role, User
-from app.services.security import decode_access_token
 
 
 def get_current_user(
-    authorization: str | None = Header(default=None),
     x_debug_user: str | None = Header(default=None),
     session: Session = Depends(get_session),
 ) -> User:
-    """Authorization: Bearer <JWT>로 사용자를 찾는다.
-
-    ENV=dev일 때만 토큰이 없으면 X-Debug-User 헤더(사용자 ID)도 받는다. prod에서는 이 헤더를 무시한다.
-    """
-    user_id: int | None = None
-
-    scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() == "bearer" and token.strip():
-        payload = decode_access_token(token.strip())
-        if payload is None or not str(payload.get("sub", "")).isdigit():
-            api_error(401, "UNAUTHORIZED", "로그인이 필요합니다")
-        user_id = int(payload["sub"])
-    elif settings.is_dev and x_debug_user and x_debug_user.isdigit():
-        user_id = int(x_debug_user)
-
-    if user_id is None:
+    # 임시: X-Debug-User 헤더의 사용자 ID. ENV=dev에서만 허용
+    if not settings.is_dev or not x_debug_user or not x_debug_user.isdigit():
         api_error(401, "UNAUTHORIZED", "로그인이 필요합니다")
-    user = session.get(User, user_id)
+    user = session.get(User, int(x_debug_user))
     if user is None:
         api_error(401, "UNAUTHORIZED", "로그인이 필요합니다")
     return user
