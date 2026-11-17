@@ -1,4 +1,4 @@
-"""운영자용 강의 일괄 등록.
+"""운영자용 API: 강의 일괄 등록, 교수 계정 비밀번호 설정.
 
 강의계획서의 과목들을 담당 교수 메일과 함께 미리 넣어 둔다.
 교수 계정이 아직 없으면 "가입 대기" 교수 계정(비밀번호 없음, 로그인 불가)을 만들어 과목을 연결한다.
@@ -12,7 +12,6 @@
 
 import hmac
 import os
-from datetime import time
 from re import fullmatch
 
 from fastapi import APIRouter, Depends
@@ -23,8 +22,16 @@ from sqlmodel import Session, delete, select
 from app.db import get_session
 from app.errors import api_error
 from app.models import Course, CourseSchedule, Role, User
-from app.routers.auth import ALLOWED_DOMAIN, MAX_NAME_LENGTH, PENDING_PASSWORD_HASH, is_pending_professor
+from app.routers.auth import (
+    ALLOWED_DOMAIN,
+    MAX_NAME_LENGTH,
+    MIN_PASSWORD_LENGTH,
+    PENDING_PASSWORD_HASH,
+    is_pending_professor,
+)
 from app.routers.courses import CourseScheduleRequest
+from app.services import schedule
+from app.services.security import hash_password
 
 router = APIRouter(tags=["admin"])
 
@@ -45,7 +52,7 @@ class AdminCourse(BaseModel):
     semester: str
     professor_email: str
     professor_name: str
-    schedules: list[CourseScheduleRequest] = Field(min_length=1, max_length=7)
+    schedules: list[CourseScheduleRequest] = Field(min_length=1, max_length=schedule.MAX_SCHEDULES)
 
 
 class AdminCoursesRequest(BaseModel):
@@ -72,14 +79,7 @@ def _validated(c: AdminCourse) -> dict:
     if not 1 <= len(prof_name) <= MAX_NAME_LENGTH:
         api_error(400, "INVALID_NAME", where + f"교수 이름은 1자 이상 {MAX_NAME_LENGTH}자 이하로 입력해 주세요")
 
-    slots: dict[int, tuple[time, time]] = {}
-    for entry in c.schedules:
-        start, end = time.fromisoformat(entry.start_time), time.fromisoformat(entry.end_time)
-        if entry.day_of_week in slots:
-            api_error(400, "DUPLICATE_SCHEDULE_DAY", where + "같은 요일의 수업 시간을 한 번만 입력해 주세요")
-        if start >= end:
-            api_error(400, "INVALID_SCHEDULE_TIME", where + "수업 종료 시간은 시작 시간보다 늦어야 합니다")
-        slots[entry.day_of_week] = (start, end)
+    slots = schedule.parse_schedules(c.schedules, prefix=where)
     return {"code": code, "name": name, "semester": semester, "email": email, "prof_name": prof_name, "slots": slots}
 
 
@@ -131,7 +131,7 @@ def upsert_courses(body: AdminCoursesRequest, session: Session = Depends(get_ses
             updated += 1
         session.add_all([
             CourseSchedule(course_id=course.id, day_of_week=d, start_time=s, end_time=e)
-            for d, (s, e) in i["slots"].items()
+            for d, s, e in i["slots"]
         ])
 
     session.commit()
@@ -162,3 +162,61 @@ def list_admin_courses(session: Session = Depends(get_session)):
             "professor_status": _status(prof) if prof else None,
         })
     return out
+
+
+# ---------- 교수 계정 비밀번호 설정 (목업·데모용) ----------
+
+class AdminProfessor(BaseModel):
+    email: str
+    password: str
+    name: str | None = None  # 새로 만들 때는 필수, 이미 있으면 바꿀 때만
+
+
+class AdminProfessorsRequest(BaseModel):
+    professors: list[AdminProfessor] = Field(min_length=1, max_length=100)
+
+
+@router.put("/admin/professors", dependencies=[Depends(require_admin)])
+def set_professor_passwords(body: AdminProfessorsRequest, session: Session = Depends(get_session)):
+    """교수 계정 비밀번호를 운영자가 정한다. 계정이 없으면 만든다.
+
+    - 미리 등록된(비밀번호 없는) 교수 계정에 쓰면 바로 로그인할 수 있게 된다.
+    - 이미 쓰고 있는 교수 계정에 쓰면 비밀번호가 바뀐다. 실제 교수 계정에는 쓰지 않는다.
+    - 비밀번호는 응답이나 로그에 남기지 않는다. 요청 전체를 검사한 뒤 한 번에 저장한다.
+    """
+    items = []
+    seen: set[str] = set()
+    for p in body.professors:
+        email = p.email.strip().lower()
+        name = (p.name or "").strip()
+        local, sep, domain = email.partition("@")
+        if not sep or not local or domain != ALLOWED_DOMAIN:
+            api_error(400, "INVALID_EMAIL_DOMAIN", f"[{email}] 교수 메일은 knu.ac.kr이어야 합니다")
+        if email in seen:
+            api_error(400, "DUPLICATE_EMAIL", f"[{email}] 요청 안에 같은 메일이 두 번 있습니다")
+        seen.add(email)
+        if len(p.password) < MIN_PASSWORD_LENGTH:
+            api_error(400, "WEAK_PASSWORD", f"[{email}] 비밀번호는 {MIN_PASSWORD_LENGTH}자 이상이어야 합니다")
+        if len(name) > MAX_NAME_LENGTH:
+            api_error(400, "INVALID_NAME", f"[{email}] 이름은 {MAX_NAME_LENGTH}자 이하로 입력해 주세요")
+        user = session.exec(select(User).where(User.email == email)).first()
+        if user is not None and user.role != Role.PROFESSOR:
+            api_error(409, "PROFESSOR_EMAIL_IS_STUDENT", f"[{email}] 학생 계정입니다")
+        if user is None and not name:
+            api_error(400, "INVALID_NAME", f"[{email}] 새 교수 계정에는 이름이 필요합니다")
+        items.append((email, name, p.password, user))
+
+    result = []
+    for email, name, password, user in items:
+        if user is None:
+            user = User(email=email, password_hash=hash_password(password), name=name, role=Role.PROFESSOR)
+            status = "CREATED"
+        else:
+            status = "ACTIVATED" if is_pending_professor(user) else "UPDATED"
+            user.password_hash = hash_password(password)
+            if name:
+                user.name = name
+        session.add(user)
+        result.append({"email": email, "name": user.name, "status": status})
+    session.commit()
+    return {"professors": result}

@@ -33,7 +33,8 @@ class CreateCourseRequest(BaseModel):
     name: str
     code: str
     semester: str
-    schedules: list[CourseScheduleRequest] = Field(min_length=1, max_length=7)
+    # 같은 요일에 여러 시간 가능 (겹치지만 않으면). 검사는 schedule.parse_schedules
+    schedules: list[CourseScheduleRequest] = Field(min_length=1, max_length=schedule.MAX_SCHEDULES)
 
 
 def course_out(session: Session, course: Course, user: User, now: datetime) -> dict:
@@ -93,15 +94,7 @@ def create_course(
     if not semester or len(semester) > 20:
         api_error(400, "INVALID_SEMESTER", "학기를 1자 이상 20자 이하로 입력해 주세요")
 
-    slots: dict[int, tuple[time, time]] = {}
-    for entry in body.schedules:
-        start = time.fromisoformat(entry.start_time)
-        end = time.fromisoformat(entry.end_time)
-        if entry.day_of_week in slots:
-            api_error(400, "DUPLICATE_SCHEDULE_DAY", "같은 요일의 수업 시간을 한 번만 입력해 주세요")
-        if start >= end:
-            api_error(400, "INVALID_SCHEDULE_TIME", "수업 종료 시간은 시작 시간보다 늦어야 합니다")
-        slots[entry.day_of_week] = (start, end)
+    slots = schedule.parse_schedules(body.schedules)
 
     course = Course(name=name, code=code, semester=semester, professor_id=user.id)
     try:
@@ -109,7 +102,7 @@ def create_course(
         session.flush()
         session.add_all([
             CourseSchedule(course_id=course.id, day_of_week=day, start_time=start, end_time=end)
-            for day, (start, end) in slots.items()
+            for day, start, end in slots
         ])
         session.commit()
     except IntegrityError:

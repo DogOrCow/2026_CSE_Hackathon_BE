@@ -153,7 +153,7 @@ Jev 호출은 judge(content, course_name) 함수 하나 뒤에 둔다. 모델이
 | POST | /auth/login | email, password | 200 access_token, role, name | 401 INVALID_CREDENTIALS |
 | GET | /me | 없음 | 200 email, name, role | 401 UNAUTHORIZED |
 
-운영자는 POST /api/admin/courses(헤더 X-Admin-Key = 환경변수 ADMIN_API_KEY)로 강의를 담당 교수 메일과 함께 미리 등록할 수 있다. 그 교수가 아직 가입하지 않았으면 비밀번호 없는 교수 계정을 만들어 강의를 붙여 두고, 교수가 그 메일로 가입하면 가입 코드 없이 교수 계정이 활성화되어 강의가 바로 보인다. GET /api/admin/courses는 등록된 과목과 교수 가입 여부(PENDING/ACTIVE)를 돌려준다.
+운영자는 POST /api/admin/courses(헤더 X-Admin-Key = 환경변수 ADMIN_API_KEY)로 강의를 담당 교수 메일과 함께 미리 등록할 수 있다. 그 교수가 아직 가입하지 않았으면 비밀번호 없는 교수 계정을 만들어 강의를 붙여 두고, 교수가 그 메일로 가입하면 가입 코드 없이 교수 계정이 활성화되어 강의가 바로 보인다. GET /api/admin/courses는 등록된 과목과 교수 가입 여부(PENDING/ACTIVE)를 돌려준다. PUT /api/admin/professors로 운영자가 교수 계정의 비밀번호를 직접 정할 수 있다(목업·데모 계정용, 계정이 없으면 만든다).
 
 가입 요청의 role은 기본 STUDENT다. PROFESSOR로 가입하려면 name(1~50자)과 professor_code가 필요하고, professor_code는 서버 환경변수 PROFESSOR_SIGNUP_CODE와 같아야 한다. 이 환경변수가 비어 있으면 교수 가입은 403 PROFESSOR_SIGNUP_DISABLED다. 학생 가입에 보낸 name은 저장하지 않는다.
 
@@ -167,7 +167,7 @@ Jev 호출은 judge(content, course_name) 함수 하나 뒤에 둔다. 모델이
 | POST | /courses | 교수. 요청 name, code, semester, schedules | 201 과목 | 400 입력 오류, 403 FORBIDDEN, 409 COURSE_CODE_TAKEN |
 | POST | /courses/enroll | 학생. 요청 code | 201 과목 | 404 COURSE_NOT_FOUND, 409 ALREADY_ENROLLED |
 
-강의 추가는 로그인한 교수를 담당자로 지정한다. `schedules`에는 요일별 시간표를 1~7개 넣는다. `day_of_week`는 월요일 0부터 일요일 6까지이며, `start_time`과 `end_time`은 24시간제 `HH:MM`이다. 요일은 중복될 수 없고 시작은 종료보다 빨라야 한다.
+강의 추가는 로그인한 교수를 담당자로 지정한다. `schedules`에는 시간표를 1~14개 넣는다. `day_of_week`는 월요일 0부터 일요일 6까지이며, `start_time`과 `end_time`은 24시간제 `HH:MM`이다. 같은 요일에 여러 시간을 넣을 수 있지만(예: 화 10:30~11:45, 화 15:00~16:15) 서로 겹치면 400 OVERLAPPING_SCHEDULE이다. 시작은 종료보다 빨라야 한다. 같은 날의 여러 시간은 같은 차시를 쓰고, 수업 중 판별과 종료 시각은 지금 진행 중인 시간을 기준으로 한다.
 
 ```json
 {
