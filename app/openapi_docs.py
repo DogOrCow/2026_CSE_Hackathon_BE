@@ -25,7 +25,12 @@ ERRORS: dict[tuple[str, str], dict[int, list[str]]] = {
     },
     ("post", "/api/admin/courses"): {
         400: ["VALIDATION_ERROR", "INVALID_COURSE_CODE", "INVALID_COURSE_NAME", "INVALID_SEMESTER", "INVALID_EMAIL_DOMAIN",
-              "INVALID_NAME", "DUPLICATE_SCHEDULE_DAY", "INVALID_SCHEDULE_TIME", "DUPLICATE_COURSE_CODE"],
+              "INVALID_NAME", "OVERLAPPING_SCHEDULE", "INVALID_SCHEDULE_TIME", "DUPLICATE_COURSE_CODE"],
+        403: ["ADMIN_DISABLED", "FORBIDDEN"],
+        409: ["PROFESSOR_EMAIL_IS_STUDENT"],
+    },
+    ("put", "/api/admin/professors"): {
+        400: ["VALIDATION_ERROR", "INVALID_EMAIL_DOMAIN", "DUPLICATE_EMAIL", "WEAK_PASSWORD", "INVALID_NAME"],
         403: ["ADMIN_DISABLED", "FORBIDDEN"],
         409: ["PROFESSOR_EMAIL_IS_STUDENT"],
     },
@@ -36,7 +41,7 @@ ERRORS: dict[tuple[str, str], dict[int, list[str]]] = {
     ("post", "/api/courses"): {
         400: [
             "VALIDATION_ERROR", "INVALID_COURSE_NAME", "INVALID_COURSE_CODE",
-            "INVALID_SEMESTER", "DUPLICATE_SCHEDULE_DAY", "INVALID_SCHEDULE_TIME",
+            "INVALID_SEMESTER", "OVERLAPPING_SCHEDULE", "INVALID_SCHEDULE_TIME",
         ],
         **AUTH, 403: ["FORBIDDEN"], 409: ["COURSE_CODE_TAKEN"],
     },
@@ -72,6 +77,7 @@ CODE_TEXT = {
     "AGREEMENT_REQUIRED": "익명 정책 미동의",
     "ADMIN_DISABLED": "서버에 ADMIN_API_KEY가 없어 운영자 API가 꺼져 있음",
     "DUPLICATE_COURSE_CODE": "요청 안에 같은 과목 코드가 두 번 있음",
+    "DUPLICATE_EMAIL": "요청 안에 같은 메일이 두 번 있음",
     "PROFESSOR_EMAIL_IS_STUDENT": "교수 메일로 넣은 주소가 이미 학생 계정임",
     "INVALID_NAME": "이름이 비었거나 50자 초과 (교수 가입, 운영자 강의 등록)",
     "INVALID_PROFESSOR_CODE": "교수 가입 코드가 틀림",
@@ -81,7 +87,7 @@ CODE_TEXT = {
     "INVALID_COURSE_NAME": "과목명은 1~100자",
     "INVALID_COURSE_CODE": "영문, 숫자, 하이픈을 사용한 20자 이하 코드가 필요함",
     "INVALID_SEMESTER": "학기는 1~20자",
-    "DUPLICATE_SCHEDULE_DAY": "같은 요일에 시간표를 두 번 등록함",
+    "OVERLAPPING_SCHEDULE": "같은 요일에 시간표를 두 번 등록함",
     "INVALID_SCHEDULE_TIME": "종료 시각이 시작 시각보다 늦어야 함",
     "COURSE_CODE_TAKEN": "이미 사용 중인 과목 코드",
     "ALREADY_ENROLLED": "이미 등록한 과목",

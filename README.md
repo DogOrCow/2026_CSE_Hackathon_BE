@@ -158,11 +158,21 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 | --- | --- | --- |
 | POST | `/api/admin/courses` | 강의 일괄 등록. 과목 코드 기준으로 없으면 만들고 있으면 덮어씀 |
 | GET | `/api/admin/courses` | 등록된 과목과 담당 교수 가입 여부(`PENDING` 가입 전 / `ACTIVE` 가입함) |
+| PUT | `/api/admin/professors` | 교수 계정 비밀번호 설정 (목업·데모용). 계정이 없으면 만듦 |
 
 - 헤더 `X-Admin-Key`에 환경변수 `ADMIN_API_KEY` 값을 넣습니다. Swagger에서는 **Authorize**의 `APIKeyHeader` 칸에 넣습니다. 값이 없으면 이 API는 꺼져 있습니다(`403 ADMIN_DISABLED`).
 - 담당 교수가 아직 가입하지 않았으면, 그 메일로 **비밀번호 없는 교수 계정**을 만들어 강의를 붙여 둡니다. 비밀번호가 없어 로그인할 수 없습니다.
 - 교수가 그 메일로 가입하면 비밀번호가 채워지면서 강의가 붙은 계정이 됩니다. 이 경우 교수 가입 코드는 필요 없습니다.
 - 요청 전체를 먼저 검사하고 한 번에 저장합니다. 하나라도 틀리면 아무것도 저장하지 않습니다. 같은 요청을 다시 보내도 중복되지 않습니다.
+- 같은 요일에 시간을 여러 개 넣을 수 있습니다(예: 화 10:30~11:45와 화 15:00~16:15). 서로 겹치면 `400 OVERLAPPING_SCHEDULE`입니다. 교수의 `POST /api/courses`도 같습니다.
+
+목업 교수 계정에 바로 로그인하려면 비밀번호를 정해 줍니다. **실제 교수님 계정에는 쓰지 않습니다.** 비밀번호는 응답에 나오지 않습니다.
+
+```json
+PUT /api/admin/professors
+{ "professors": [ { "email": "mock.prof@knu.ac.kr", "name": "목업 교수", "password": "8자 이상" } ] }
+```
+응답의 `status`는 `CREATED`(새로 만듦), `ACTIVATED`(가입 전 계정에 비밀번호를 넣음), `UPDATED`(이미 쓰던 계정의 비밀번호를 바꿈)입니다.
 
 ```json
 {

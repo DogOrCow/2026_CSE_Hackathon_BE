@@ -6,9 +6,13 @@
 - schedule_text(course) -> str                        예: "화·목 10:30"
 - session_bounds(class_session) -> (starts_at, ends_at)  B의 /live 응답과 수업 종료 이벤트용
 - get_live_session(session, course_id) -> ClassSession  수업 중이 아니면 409 NOT_IN_CLASS
+- parse_schedules(entries) -> [(요일, 시작, 종료)]     강의 등록 입력 검사 (courses.py, admin.py)
 
 course 인자를 받는 함수는 그 객체가 붙어 있는 DB 세션으로 시간표를 읽는다.
 DEMO_ALWAYS_LIVE=true면 시간표와 무관하게 모든 과목을 수업 중으로 보고 오늘 차시를 쓴다.
+
+같은 요일에 시간표가 여러 개일 수 있다 (예: 화 10:30~11:45, 화 15:00~16:15). 겹치지만 않으면 된다.
+차시는 (과목, 날짜)로 하나라서, 같은 날의 두 시간은 같은 차시를 쓴다.
 """
 
 from datetime import date, datetime, time, timedelta
@@ -82,25 +86,53 @@ def schedule_text(course: Course) -> str:
     return ", ".join(parts)
 
 
-def session_bounds(class_session: ClassSession) -> tuple[datetime, datetime]:
+def session_bounds(class_session: ClassSession, now: datetime | None = None) -> tuple[datetime, datetime]:
     """차시의 시작·종료 시각 (KST).
 
-    그 날짜 요일의 시간표를 쓴다. DEMO_ALWAYS_LIVE로 시간표가 없는 날에 만든 차시는
-    그날 00:00 ~ 다음 날 00:00으로 돌려준다.
+    그 날짜 요일의 시간표를 쓴다.
+    - 지금 진행 중인 시간이 있으면 그 시간 (같은 요일에 시간이 여러 개일 때 오후 수업 중이면 오후 시간)
+    - 아니면 그날 첫 시작 ~ 마지막 종료
+    - DEMO_ALWAYS_LIVE로 시간표가 없는 날에 만든 차시는 그날 00:00 ~ 다음 날 00:00
     """
     s = Session.object_session(class_session)
     if s is None:
         raise RuntimeError("class_session이 DB 세션에 붙어 있지 않습니다")
     d = class_session.date
-    slot = s.exec(
+    slots = s.exec(
         select(CourseSchedule)
         .where(CourseSchedule.course_id == class_session.course_id, CourseSchedule.day_of_week == d.weekday())
         .order_by(CourseSchedule.start_time)
-    ).first()
-    if slot is None:
+    ).all()
+    if not slots:
         start = _at(d, time(0, 0))
         return start, start + timedelta(days=1)
-    return _at(d, slot.start_time), _at(d, slot.end_time)
+    now = (now or now_kst()).astimezone(KST)
+    if now.date() == d:
+        for slot in slots:
+            if slot.start_time <= now.time() < slot.end_time:
+                return _at(d, slot.start_time), _at(d, slot.end_time)
+    return _at(d, slots[0].start_time), _at(d, max(slot.end_time for slot in slots))
+
+
+MAX_SCHEDULES = 14  # 요일마다 두 시간씩
+
+
+def parse_schedules(entries, prefix: str = "") -> list[tuple[int, time, time]]:
+    """강의 등록 시간표 검사. entries는 day_of_week, start_time, end_time("HH:MM")을 가진 객체들.
+
+    같은 요일에 여러 시간을 넣을 수 있지만 서로 겹치면 안 된다.
+    """
+    parsed = []
+    for e in entries:
+        start, end = time.fromisoformat(e.start_time), time.fromisoformat(e.end_time)
+        if start >= end:
+            api_error(400, "INVALID_SCHEDULE_TIME", prefix + "수업 종료 시간은 시작 시간보다 늦어야 합니다")
+        parsed.append((e.day_of_week, start, end))
+    parsed.sort()
+    for (d1, _, e1), (d2, s2, _) in zip(parsed, parsed[1:]):
+        if d1 == d2 and s2 < e1:
+            api_error(400, "OVERLAPPING_SCHEDULE", prefix + f"{DAY_NAMES[d1]}요일 수업 시간이 서로 겹칩니다")
+    return parsed
 
 
 def _get_or_create_session(session: Session, course_id: int, d: date) -> ClassSession:
