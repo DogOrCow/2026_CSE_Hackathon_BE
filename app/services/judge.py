@@ -31,6 +31,7 @@ DEFAULT_MODEL = "jev-1.14.0"
 QUESTION_ID = "category"
 
 ON_TOPIC = "ON_TOPIC"
+ABUSIVE = "ABUSIVE"
 HOLD_CHOICES = ("OFF_TOPIC", "PERSONAL", "ABUSIVE")
 CHOICES = (ON_TOPIC, *HOLD_CHOICES)
 
@@ -46,10 +47,13 @@ CRITERIA = {
     "PERSONAL": "Singles out a specific person (a classmate, the professor, a TA) "
                 "to mock, criticize, expose, or gossip about them",
     # 비속어는 가벼운 것도, 수업 얘기여도 막는다 (팀 결정). 글자만 겹치는 일반 단어는 예외로 명시.
-    # 예시에 "시발"을 넣으면 "시발점"이 막혀서 뺐다. tests/judge_cases.csv로 41문장 40개 정답 확인.
+    # 예시에 "시발"을 넣으면 "시발점"이 막혀서 뺐다.
+    # 선정적인 글도 여기에 넣는다. 선택지가 없을 때는 OFF_TOPIC으로 분류되어 확신도가 낮으면 뚫렸다.
     "ABUSIVE": "Contains any profanity, swear word, or vulgar slang, including mild or casual ones and their "
                "abbreviations (e.g. 존나, 졸라, ㅈㄴ, 씨발, ㅅㅂ, 병신, 개빡치다, 미친), even when it is about "
-               "the course or just expresses frustration; also insults, slurs, or hateful language. "
+               "the course or just expresses frustration; also insults, slurs, or hateful language; "
+               "also sexual, obscene, or sexually suggestive content (e.g. 섹스, 야동, 야한 얘기, 19금, "
+               "comments on someone's body). "
                "Ordinary words that only share syllables with a swear word are not profanity "
                "(e.g. 시발점 meaning starting point, 개념, 병렬, 미분)",
 }
@@ -122,12 +126,43 @@ def decide(result: JevResult, threshold: float) -> dict:
     if top not in HOLD_CHOICES:
         log.warning("Jev가 알 수 없는 선택지를 돌려줌: %s → 통과", top)
         return PASS
-    if result.confidence >= threshold:
+    # 욕설은 세게 막는다 (팀 결정): 가장 높은 판정이 ABUSIVE면 확신도와 상관없이 보류.
+    # "시바시바"처럼 글자를 비틀면 확신도가 0.4~0.6으로 떨어져 기준값 규칙만으로는 뚫렸다.
+    if top == ABUSIVE or result.confidence >= threshold:
         return {"passed": False, "reason": top}
     return PASS
 
 
+# ---------- Jev 앞 욕설 단어 필터 ----------
+# Jev 호출 없이 바로 막는다. Jev가 실패해 "통과"로 처리되는 경우(3초 초과, 429 등)에도 뻔한 욕설은 막힌다.
+# 띄어쓰기·숫자·기호·영문 대소문자를 걷어낸 뒤 포함 여부만 본다. 애매한 단어(미친, 시바 등)는 Jev에 맡긴다.
+PROFANITY = (
+    "씨발", "씨빨", "씨팔", "시발", "시빨", "씌발", "쒸발", "ㅅㅂ", "ㅆㅂ", "ㅅㅃ",
+    "병신", "븅신", "ㅂㅅ", "ㅄ", "존나", "졸라", "ㅈㄴ", "좆", "개새끼", "개새", "ㄱㅅㄲ",
+    "지랄", "ㅈㄹ", "염병", "느금마", "애미뒤", "엿먹", "닥쳐",
+    "tlqkf", "qudtls", "whssk",  # 한글 자판으로 친 씨발·병신·존나
+    "fuck", "shit", "bitch",
+)
+# 욕설과 글자만 겹치는 일반 단어. 지운 뒤에 검사한다.
+NOT_PROFANITY = ("시발점", "시발역", "시발택시", "시발자동차")
+
+
+def _normalize(text: str) -> str:
+    t = text.lower()
+    for word in NOT_PROFANITY:
+        t = t.replace(word, "")
+    return "".join(ch for ch in t if ch.isalpha())  # 공백·숫자·기호 제거 (한글·자모·영문만 남김)
+
+
+def has_profanity(text: str) -> bool:
+    t = _normalize(text)
+    return any(word in t for word in PROFANITY)
+
+
 def judge(content: str, course_name: str) -> dict:
+    if has_profanity(content):
+        log.info("욕설 단어 필터 → 보류")
+        return {"passed": False, "reason": ABUSIVE}
     if not settings.JUDGE_API_KEY:
         return PASS  # 개발용: 키가 없으면 호출하지 않는다
 
