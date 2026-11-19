@@ -135,28 +135,37 @@ def decide(result: JevResult, threshold: float) -> dict:
 
 # ---------- Jev 앞 욕설 단어 필터 ----------
 # Jev 호출 없이 바로 막는다. Jev가 실패해 "통과"로 처리되는 경우(3초 초과, 429 등)에도 뻔한 욕설은 막힌다.
-# 띄어쓰기·숫자·기호·영문 대소문자를 걷어낸 뒤 포함 여부만 본다. 애매한 단어(미친, 시바 등)는 Jev에 맡긴다.
+# 애매한 단어(미친, 시바 등)는 Jev에 맡긴다.
+# 일반 욕설은 띄어쓰기를 살린 채로 찾는다. 띄어쓰기까지 지우면 "다시 발표", "기존 나머지"처럼
+# 단어 경계를 넘어 글자가 이어진 정상 질문이 막힌다. "씨 발"처럼 띄어 쓴 욕설은 Jev가 판정한다.
 PROFANITY = (
-    "씨발", "씨빨", "씨팔", "시발", "시빨", "씌발", "쒸발", "ㅅㅂ", "ㅆㅂ", "ㅅㅃ",
-    "병신", "븅신", "ㅂㅅ", "ㅄ", "존나", "졸라", "ㅈㄴ", "좆", "개새끼", "개새", "ㄱㅅㄲ",
-    "지랄", "ㅈㄹ", "염병", "느금마", "애미뒤", "엿먹", "닥쳐",
+    "씨발", "씨빨", "씨팔", "시발", "시빨", "씌발", "쒸발",
+    "병신", "븅신", "존나", "졸라", "좆", "개새끼", "개새",
+    "지랄", "염병", "느금마", "애미뒤", "엿먹", "닥쳐",
     "tlqkf", "qudtls", "whssk",  # 한글 자판으로 친 씨발·병신·존나
     "fuck", "shit", "bitch",
 )
+# 자모 줄임말은 띄어쓰기까지 지우고 찾는다 ("ㅅ ㅂ"). 정상 문장에 자모가 이어질 일이 드물다.
+PROFANITY_JAMO = ("ㅅㅂ", "ㅆㅂ", "ㅅㅃ", "ㅂㅅ", "ㅄ", "ㅈㄴ", "ㄱㅅㄲ", "ㅈㄹ")
 # 욕설과 글자만 겹치는 일반 단어. 지운 뒤에 검사한다.
-NOT_PROFANITY = ("시발점", "시발역", "시발택시", "시발자동차")
+NOT_PROFANITY = ("시발점", "시발역", "시발택시", "시발자동차", "졸라매", "졸라맨")
 
 
 def _normalize(text: str) -> str:
+    """소문자로 바꾸고 예외 단어·숫자·기호를 지운다. 띄어쓰기는 한 칸으로 남긴다."""
     t = text.lower()
     for word in NOT_PROFANITY:
         t = t.replace(word, "")
-    return "".join(ch for ch in t if ch.isalpha())  # 공백·숫자·기호 제거 (한글·자모·영문만 남김)
+    t = "".join(ch for ch in t if ch.isalpha() or ch.isspace())  # "씨1발", "씨.발"은 붙는다
+    return " ".join(t.split())
 
 
 def has_profanity(text: str) -> bool:
-    t = _normalize(text)
-    return any(word in t for word in PROFANITY)
+    spaced = _normalize(text)
+    if any(word in spaced for word in PROFANITY):
+        return True
+    packed = spaced.replace(" ", "")
+    return any(word in packed for word in PROFANITY_JAMO)
 
 
 def judge(content: str, course_name: str) -> dict:
