@@ -5,7 +5,7 @@
 교수가 그 메일로 가입하면 계정이 활성화되고, 과목 코드를 입력하지 않아도 내 강의에 바로 보인다 (auth.py).
 
 - 헤더 X-Admin-Key가 환경변수 ADMIN_API_KEY와 같아야 한다. 비어 있으면 이 API는 꺼져 있다.
-- 과목 코드 기준으로 덮어쓴다 (없으면 생성, 있으면 이름·학기·담당 교수·시간표 갱신). 여러 번 보내도 된다.
+- 같은 학기의 과목 코드만 갱신한다. 다른 학기에 이미 등록된 과목 코드는 재사용할 수 없다.
 - 요청 전체를 먼저 검사하고 한 번에 저장한다. 하나라도 틀리면 아무것도 저장하지 않는다.
 - 테이블 구조는 바꾸지 않는다 (가입 대기는 password_hash가 빈 문자열인 교수 계정).
 """
@@ -17,6 +17,7 @@ from re import fullmatch
 from fastapi import APIRouter, Depends
 from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, delete, select
 
 from app.db import get_session
@@ -63,7 +64,7 @@ def _validated(c: AdminCourse) -> dict:
     """POST /api/courses(courses.py)와 같은 규칙 + 교수 메일·이름."""
     code = c.code.strip().upper()
     name = c.name.strip()
-    semester = c.semester.strip()
+    semester = schedule.normalize_semester(c.semester)
     email = c.professor_email.strip().lower()
     prof_name = c.professor_name.strip()
     where = f"[{code or c.code}] "
@@ -71,8 +72,8 @@ def _validated(c: AdminCourse) -> dict:
         api_error(400, "INVALID_COURSE_CODE", where + "과목 코드는 영문, 숫자, 하이픈을 사용해 20자 이하로 입력해 주세요")
     if not name or len(name) > 100:
         api_error(400, "INVALID_COURSE_NAME", where + "과목명은 1자 이상 100자 이하로 입력해 주세요")
-    if not semester or len(semester) > 20:
-        api_error(400, "INVALID_SEMESTER", where + "학기를 1자 이상 20자 이하로 입력해 주세요")
+    if semester is None:
+        api_error(400, "INVALID_SEMESTER", where + "학기를 2026-2 또는 2026년 2학기 형식으로 입력해 주세요")
     local, sep, domain = email.partition("@")
     if not sep or not local or domain != ALLOWED_DOMAIN:
         api_error(400, "INVALID_EMAIL_DOMAIN", where + "교수 메일은 knu.ac.kr이어야 합니다")
@@ -89,11 +90,19 @@ def _status(user: User) -> str:
 
 @router.post("/admin/courses", dependencies=[Depends(require_admin)])
 def upsert_courses(body: AdminCoursesRequest, session: Session = Depends(get_session)):
-    """강의 일괄 등록. 과목 코드 기준으로 생성하거나 갱신한다."""
+    """강의 일괄 등록. 과목 코드 기준으로 생성하거나 같은 학기의 강의를 갱신한다."""
     items = [_validated(c) for c in body.courses]
     codes = [i["code"] for i in items]
     if len(set(codes)) != len(codes):
         api_error(400, "DUPLICATE_COURSE_CODE", "요청 안에 같은 과목 코드가 두 번 있습니다")
+
+    existing_courses = {
+        course.code: course for course in session.exec(select(Course).where(Course.code.in_(codes)))
+    }
+    for i in items:
+        course = existing_courses.get(i["code"])
+        if course is not None and schedule.normalize_semester(course.semester) != i["semester"]:
+            api_error(409, "COURSE_CODE_TAKEN", f"[{course.code}] 다른 학기에 이미 사용된 과목 코드입니다")
 
     # 저장 전에 학생 메일이 교수로 들어가 있지 않은지 전부 확인
     professors: dict[str, User] = {}
@@ -118,11 +127,17 @@ def upsert_courses(body: AdminCoursesRequest, session: Session = Depends(get_ses
             prof.name = i["prof_name"]  # 가입 전이면 이름을 최신 값으로. 가입한 교수의 이름은 건드리지 않음
             session.add(prof)
 
-        course = session.exec(select(Course).where(Course.code == i["code"])).first()
+        course = existing_courses.get(i["code"])
         if course is None:
             course = Course(code=i["code"], name=i["name"], semester=i["semester"], professor_id=prof.id)
             session.add(course)
-            session.flush()
+            try:
+                session.flush()
+            except IntegrityError:
+                session.rollback()
+                if session.exec(select(Course.id).where(Course.code == i["code"])).first() is not None:
+                    api_error(409, "COURSE_CODE_TAKEN", f"[{i['code']}] 이미 사용 중인 과목 코드입니다")
+                raise
             created += 1
         else:
             course.name, course.semester, course.professor_id = i["name"], i["semester"], prof.id

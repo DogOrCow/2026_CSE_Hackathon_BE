@@ -1,5 +1,5 @@
 /**
- * 익명실명 인증 메일 중계 (Google Apps Script 웹 앱). 백엔드는 app/services/mail.py가 호출한다.
+ * 모름지기 인증 메일 중계 (Google Apps Script 웹 앱). 백엔드는 app/services/mail.py가 호출한다.
  *
  * Railway는 SMTP 포트를 막지만 HTTPS는 열려 있어서, 백엔드가 이 웹 앱에 HTTPS로 요청하면
  * 이 스크립트를 만든 Gmail 계정으로 메일을 대신 보낸다. 개인 Gmail 기준 하루 100명까지.
@@ -24,9 +24,9 @@ function doPost(e) {
 
     MailApp.sendEmail({
       to: body.to,
-      subject: '[익명실명] 인증 코드',
+      subject: '[모름지기] 인증 코드',
       body: '인증 코드: ' + body.code + '\n\n3분 안에 입력해 주세요.',
-      name: '익명실명',
+      name: '모름지기',
     });
     return out_({ ok: true, remaining: MailApp.getRemainingDailyQuota() });
   } catch (err) {

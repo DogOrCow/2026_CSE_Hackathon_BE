@@ -25,7 +25,7 @@ logger = logging.getLogger("uvicorn.error")
 
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
-SUBJECT = "[익명실명] 인증 코드"
+SUBJECT = "[모름지기] 인증 코드"
 TIMEOUT = 15  # Apps Script는 첫 호출이 몇 초 걸릴 수 있다
 
 

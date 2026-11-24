@@ -16,7 +16,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="익명실명 API", lifespan=lifespan)
+app = FastAPI(title="모름지기 API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

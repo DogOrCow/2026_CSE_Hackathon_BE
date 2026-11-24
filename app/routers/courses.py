@@ -86,13 +86,13 @@ def create_course(
 ):
     name = body.name.strip()
     code = body.code.strip().upper()
-    semester = body.semester.strip()
+    semester = schedule.normalize_semester(body.semester)
     if not name or len(name) > 100:
         api_error(400, "INVALID_COURSE_NAME", "과목명은 1자 이상 100자 이하로 입력해 주세요")
     if len(code) > 20 or not fullmatch(r"[A-Z0-9]+(?:-[A-Z0-9]+)*", code):
         api_error(400, "INVALID_COURSE_CODE", "과목 코드는 영문, 숫자, 하이픈을 사용해 20자 이하로 입력해 주세요")
-    if not semester or len(semester) > 20:
-        api_error(400, "INVALID_SEMESTER", "학기를 1자 이상 20자 이하로 입력해 주세요")
+    if semester is None:
+        api_error(400, "INVALID_SEMESTER", "학기를 2026-2 또는 2026년 2학기 형식으로 입력해 주세요")
 
     slots = schedule.parse_schedules(body.schedules)
 

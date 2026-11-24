@@ -16,6 +16,7 @@ DEMO_ALWAYS_LIVE=true면 시간표와 무관하게 모든 과목을 수업 중�
 """
 
 from datetime import date, datetime, time, timedelta
+from re import fullmatch
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -27,8 +28,36 @@ from app.models import ClassSession, Course, CourseSchedule
 DAY_NAMES = "월화수목금토일"
 
 
-def week_of(d: date) -> int:
-    return (d - settings.SEMESTER_START).days // 7 + 1
+def normalize_semester(value: str) -> str | None:
+    parts = fullmatch(r"([0-9]{4})\s*(?:-\s*([12])|년\s*([12])\s*학기)", value.strip())
+    if parts is None:
+        return None
+    year, short_term, korean_term = parts.groups()
+    if not 1 <= int(year) < date.max.year:
+        return None
+    return f"{year}-{short_term or korean_term}"
+
+
+def _semester_start(year: int, term: int) -> date:
+    configured = settings.SEMESTER_START
+    if configured.year == year and (1 if configured.month <= 6 else 2) == term:
+        return configured
+    return date(year, 3 if term == 1 else 9, 1)
+
+
+def _semester_bounds(semester: str) -> tuple[date, date] | None:
+    normalized = normalize_semester(semester)
+    if normalized is None:
+        return None
+    year, term = map(int, normalized.split("-"))
+    next_year, next_term = (year, 2) if term == 1 else (year + 1, 1)
+    return _semester_start(year, term), _semester_start(next_year, next_term)
+
+
+def week_of(d: date, semester: str | None = None) -> int:
+    bounds = _semester_bounds(semester) if semester is not None else None
+    first_day = bounds[0] if bounds else settings.SEMESTER_START
+    return (d - first_day).days // 7 + 1
 
 
 def _schedules(course: Course) -> list[CourseSchedule]:
@@ -59,14 +88,22 @@ def _current_slot(schedules: list[CourseSchedule], now: datetime) -> CourseSched
 def is_live(course: Course, now: datetime) -> bool:
     if settings.DEMO_ALWAYS_LIVE:
         return True
-    return _current_slot(_schedules(course), now) is not None
+    bounds = _semester_bounds(course.semester)
+    today = now.astimezone(KST).date()
+    return bool(bounds and bounds[0] <= today < bounds[1] and _current_slot(_schedules(course), now))
 
 
 def next_class_at(course: Course, now: datetime) -> datetime | None:
     now = now.astimezone(KST)
+    bounds = _semester_bounds(course.semester)
+    if bounds is None or now.date() >= bounds[1]:
+        return None
+    first_day = max(now.date(), bounds[0])
     schedules = _schedules(course)
     for offset in range(8):
-        d = now.date() + timedelta(days=offset)
+        d = first_day + timedelta(days=offset)
+        if d >= bounds[1]:
+            break
         starts = sorted(_at(d, sc.start_time) for sc in schedules if sc.day_of_week == d.weekday())
         for st in starts:
             if st > now:
@@ -135,12 +172,12 @@ def parse_schedules(entries, prefix: str = "") -> list[tuple[int, time, time]]:
     return parsed
 
 
-def _get_or_create_session(session: Session, course_id: int, d: date) -> ClassSession:
-    stmt = select(ClassSession).where(ClassSession.course_id == course_id, ClassSession.date == d)
+def _get_or_create_session(session: Session, course: Course, d: date) -> ClassSession:
+    stmt = select(ClassSession).where(ClassSession.course_id == course.id, ClassSession.date == d)
     found = session.exec(stmt).first()
     if found:
         return found
-    cs = ClassSession(course_id=course_id, date=d, week=week_of(d))
+    cs = ClassSession(course_id=course.id, date=d, week=week_of(d, course.semester))
     session.add(cs)
     try:
         session.commit()
@@ -162,10 +199,9 @@ def find_today_session(session: Session, course_id: int, now: datetime) -> Class
 def get_live_session(session: Session, course_id: int) -> ClassSession:
     """수업 중이면 오늘 차시를 (없으면 만들어) 돌려준다. 아니면 409 NOT_IN_CLASS."""
     now = now_kst()
-    if not settings.DEMO_ALWAYS_LIVE:
-        course = session.get(Course, course_id)
-        if course is None:
-            api_error(404, "NOT_FOUND", "과목을 찾을 수 없습니다")
-        if _current_slot(_schedules(course), now) is None:
-            api_error(409, "NOT_IN_CLASS", "지금은 수업 시간이 아닙니다")
-    return _get_or_create_session(session, course_id, now.date())
+    course = session.get(Course, course_id)
+    if course is None:
+        api_error(404, "NOT_FOUND", "과목을 찾을 수 없습니다")
+    if not is_live(course, now):
+        api_error(409, "NOT_IN_CLASS", "지금은 수업 시간이 아닙니다")
+    return _get_or_create_session(session, course, now.astimezone(KST).date())

@@ -1,4 +1,4 @@
-# 익명실명 Backend
+# 모름지기 Backend
 
 수업 중에 손들기 어려운 질문을 학생이 **익명**으로 올리고, 교수가 질문 받는 시간에 확인해 말로 답하는 웹앱의 백엔드입니다.
 2026 경북대 컴퓨터학부 해커톤 출품작이며, 제출 마감은 **11월 24일(화) 12:00**입니다.
@@ -110,7 +110,7 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 | `JWT_SECRET` | 아무 값 | 길고 무작위인 값 | 토큰 서명 키 |
 | `ENV` | `dev` | **`prod`** | `dev`에서만 `X-Debug-User` 허용 |
 | `CORS_ORIGINS` | `http://localhost:5173` | 직접 호출할 때만 | 쉼표로 구분. Pages 프록시를 쓰면 불필요 |
-| `SEMESTER_START` | `2026-09-01` | 실제 학기 시작일 | 주차 계산 |
+| `SEMESTER_START` | `2026-09-01` | 실제 학기 시작일 | 해당 학기의 수업 판정과 주차 계산. 다른 학기는 3월 1일과 9월 1일을 기본 시작일로 사용 |
 | `TZ` | `Asia/Seoul` | `Asia/Seoul` | 로그 시각용. 코드는 항상 KST로 계산 |
 | `DEMO_ALWAYS_LIVE` | `true` 권장 | 발표 방식에 따라 | 모든 과목을 수업 중으로 봄 |
 | `JUDGE_API_KEY` | 선택 | **필수** | Jev 키. 비면 검열 없이 모두 통과 |
@@ -156,7 +156,7 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |
-| POST | `/api/admin/courses` | 강의 일괄 등록. 과목 코드 기준으로 없으면 만들고 있으면 덮어씀 |
+| POST | `/api/admin/courses` | 강의 일괄 등록. 새 과목 코드는 생성하고 같은 학기의 기존 코드는 갱신 |
 | GET | `/api/admin/courses` | 등록된 과목과 담당 교수 가입 여부(`PENDING` 가입 전 / `ACTIVE` 가입함) |
 | PUT | `/api/admin/professors` | 교수 계정 비밀번호 설정 (목업·데모용). 계정이 없으면 만듦 |
 
@@ -164,6 +164,7 @@ docker run -d --name anon-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=anon -
 - 담당 교수가 아직 가입하지 않았으면, 그 메일로 **비밀번호 없는 교수 계정**을 만들어 강의를 붙여 둡니다. 비밀번호가 없어 로그인할 수 없습니다.
 - 교수가 그 메일로 가입하면 비밀번호가 채워지면서 강의가 붙은 계정이 됩니다. 이 경우 교수 가입 코드는 필요 없습니다.
 - 요청 전체를 먼저 검사하고 한 번에 저장합니다. 하나라도 틀리면 아무것도 저장하지 않습니다. 같은 요청을 다시 보내도 중복되지 않습니다.
+- 다른 학기에 이미 사용된 코드는 `409 COURSE_CODE_TAKEN`이 반환됩니다. 새 학기 강의에는 별도 과목 코드를 사용합니다.
 - 같은 요일에 시간을 여러 개 넣을 수 있습니다(예: 화 10:30~11:45와 화 15:00~16:15). 서로 겹치면 `400 OVERLAPPING_SCHEDULE`입니다. 교수의 `POST /api/courses`도 같습니다.
 
 목업 교수 계정에 바로 로그인하려면 비밀번호를 정해 줍니다. **실제 교수님 계정에는 쓰지 않습니다.** 비밀번호는 응답에 나오지 않습니다.
